@@ -52,6 +52,7 @@ background-size: contain;
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
+  eval = FALSE,
   collapse = TRUE,
   warning = FALSE,
   comment = "#>",
@@ -155,12 +156,12 @@ options(
 ## Example: COVID-19 clinical trial simulation
 
 * Motivation: design a placebo-controlled phase 2 clinical trial of a potential new treatment of COVID-19.
+* Goal: understand the operating characteristics of the trial under different effect size scenarios.
 * Patient population: hospitalized patients with moderate symptoms.
 * Endpoint: days until discharge from the hospital.
-* Goal: find the minimum sample size required to observe a high effect size with high enough certainty.
-* Decision: go to phase 3 if Prob(hazard ratio (of discharge) > 1) > 0.6 at the end of the study.
+* Decision: go to phase 3 if Prob(hazard ratio (of discharge) > 1.5) > 0.6 at the end of the study.
 * Simulation:
-    1. Simulate time to event data from each arm (1 treatment and 1 placebo) from probability distributions.
+    1. Simulate time to event data from each arm (1 treatment and 1 placebo) from normal distributions (left-truncated right-censored).
     2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html))
 
 ---
@@ -169,7 +170,7 @@ options(
 
 * Full source code: <https://github.com/wlandau/rmedicine2020>
 
-```{r, eval = FALSE}
+```{r}
 run.sh
 run.R
 _drake.R
@@ -244,7 +245,7 @@ summarize_samples <- function(samples, patients) {
 
 * A `drake` plan is an outline of the steps of a pipeline.
 
-```{r, eval = FALSE}
+```{r}
 plan <- drake_plan(
   sim = target(
     seq_len(1e3),
@@ -252,13 +253,13 @@ plan <- drake_plan(
   ),
   patients = target(
     simulate_trial(
-      mean_control = 15,
-      mean_treatment = 10,
-      patients_per_arm = patients_per_arm,
+      mean_control = 20,
+      mean_treatment = mean_treatment,
+      patients_per_arm = 100,
       censor = 30
     ),
     dynamic = map(sim),
-    transform = map(patients_per_arm = c(100, 200, 300)),
+    transform = map(mean_treatment = c(10, 15, 20)),
     format = "fst_tbl"
   ),
 ```
@@ -269,53 +270,16 @@ plan <- drake_plan(
 
 * A `drake` plan is an outline of the steps of a pipeline.
 
-```{r, eval = FALSE}
-  models = target(
+```{r}
+models = target(
     model_hazard(patients, 2e3),
     dynamic = map(patients),
-    transform = map(patients, .id = patients_per_arm),
+    transform = map(patients, .id = mean_treatment),
     format = "fst_tbl"
   ),
   summaries = target(
     summarize_models(models),
-    transform = map(models, .id = patients_per_arm),
-    format = "fst_tbl"
-  ),
-  results = target(
-    bind_rows(summaries),
-    transform = combine(summaries),
-    format = "fst_tbl",
-    hpc = FALSE
-  )
-)
-```
-
-```{r, include = FALSE}
-plan <- drake::drake_plan(
-  sim = target(
-    seq_len(10),
-    hpc = FALSE
-  ),
-  patients = target(
-    simulate_trial(
-      mean_control = 20,
-      mean_treatment = 10,
-      patients_per_arm = patients_per_arm,
-      censor = 30
-    ),
-    dynamic = map(sim),
-    transform = map(patients_per_arm = c(100, 200, 300)),
-    format = "fst_tbl"
-  ),
-  models = target(
-    model_hazard(patients, 100),
-    dynamic = map(patients),
-    transform = map(patients, .id = patients_per_arm),
-    format = "fst_tbl"
-  ),
-  summaries = target(
-    summarize_models(models),
-    transform = map(models, .id = patients_per_arm),
+    transform = map(models, .id = mean_treatment),
     format = "fst_tbl"
   ),
   results = target(
@@ -331,7 +295,44 @@ plan <- drake::drake_plan(
 
 ## Plan objects are data frames.
 
-```{r}
+```{r, eval = TRUE, echo = FALSE}
+plan <- drake::drake_plan(
+  sim = target(
+    seq_len(1e3),
+    hpc = FALSE
+  ),
+  patients = target(
+    simulate_trial(
+      mean_control = 20,
+      mean_treatment = mean_treatment,
+      patients_per_arm = 100,
+      censor = 30
+    ),
+    dynamic = map(sim),
+    transform = map(mean_treatment = c(10, 15, 20)),
+    format = "fst_tbl"
+  ),
+  models = target(
+    model_hazard(patients, 2e3),
+    dynamic = map(patients),
+    transform = map(patients, .id = mean_treatment),
+    format = "fst_tbl"
+  ),
+  summaries = target(
+    summarize_models(models),
+    transform = map(models, .id = mean_treatment),
+    format = "fst_tbl"
+  ),
+  results = target(
+    bind_rows(summaries),
+    transform = combine(summaries),
+    format = "fst_tbl",
+    hpc = FALSE
+  )
+)
+```
+
+```{r, eval = TRUE}
 plan
 ```
 
@@ -339,7 +340,7 @@ plan
 
 ## Pipelines are directed acyclic graphs
 
-```{r, eval = FALSE}
+```{r}
 plot(plan)
 ```
 
@@ -349,24 +350,18 @@ plot(plan)
 
 ## Run the pipeline with `r_make()`
 
-```{r, eval = FALSE}
+```{r}
 r_make()
-#> ▶ dynamic patients_100
-#> > subtarget patients_100_0b3474bd
-#> > subtarget patients_100_b2a5c9b8
+#> ▶ dynamic patients_10
+#> > subtarget patients_10_0b3474bd
+#> > subtarget patients_10_b2a5c9b8
 # ...
-#> ■ finalize patients_100
-#> ▶ dynamic patients_200
-#> ▶ dynamic patients_300
-#> ▶ dynamic patients_400
-#> ▶ dynamic models_100
-#> ▶ dynamic models_200
-#> ▶ dynamic models_300
-#> ▶ dynamic models_400
-#> ▶ target summaries_100
-#> ▶ target summaries_200
-#> ▶ target summaries_300
-#> ▶ target summaries_400
+#> ■ finalize patients_10
+#> ▶ dynamic patients_20
+#> ▶ dynamic models_10
+#> ▶ dynamic models_20
+#> ▶ target summaries_10
+#> ▶ target summaries_20
 #> ▶ target results
 ```
 
@@ -374,7 +369,7 @@ r_make()
 
 ## Inspect the results
 
-```{r, eval = FALSE}
+```{r}
 > readd(results)
 #> # A tibble: 3 x 6
 #>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
@@ -386,20 +381,20 @@ r_make()
 
 ---
 
-## Add a sample size
+## Add a new effect size scenario
 
-```{r, eval = FALSE}
+```{r}
 plan <- drake_plan(
   # ...
   patients = target(
     simulate_trial(
       mean_control = 20,
-      mean_treatment = 10,
-      patients_per_arm = patients_per_arm,
+      mean_treatment = mean_treatment,
+      patients_per_arm = 100,
       censor = 30
     ),
     dynamic = map(sim),
-    transform = map(patients_per_arm = c(100, 200, 300, 400)), #<<
+    transform = map(mean_treatment = c(10, 15, 20)), #<<
     format = "fst_tbl"
   ),
   # ...
@@ -415,19 +410,19 @@ plan <- drake_plan(
 
 ## Only the new or outdated targets run this time.
 
-```{r, eval = FALSE}
+```{r}
 r_make()
-#> ▶ dynamic patients_400
-#> > subtarget patients_400_0b3474bd
-#> > subtarget patients_400_b2a5c9b8
+#> ▶ dynamic patients_15
+#> > subtarget patients_15_0b3474bd
+#> > subtarget patients_15_b2a5c9b8
 #> ...
-#> ■ finalize patients_400
-#> ▶ dynamic models_400
-#> > subtarget models_400_988dca98
-#> > subtarget models_400_de6279d2
+#> ■ finalize patients_15
+#> ▶ dynamic models_15
+#> > subtarget models_15_988dca98
+#> > subtarget models_15_de6279d2
 #> ...
-#> ■ finalize models_400
-#> ▶ target summaries_400
+#> ■ finalize models_15
+#> ▶ target summaries_15
 #> ▶ target results
 ```
 
@@ -435,12 +430,7 @@ r_make()
 
 ## New combined results
 
-* The largest sample size should be the most powerful, and some of the MCMCs did not converge.
-* We need to run more trial simulations and MCMC samples.
-* The code at <https://github.com/wlandau/rmedicine2020> scaled up and configured to run targets in parallel on a Sun Grid Engine cluster.
-    * Execute `run.sh` or `run.R` to deploy the pipeline.
-
-```{r, eval = FALSE}
+```{r}
 readd(results)
 #> # A tibble: 4 x 6
 #>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
@@ -453,24 +443,9 @@ readd(results)
 
 ---
 
-## After scaled-up computation on a cluster
-
-```{r, eval = FALSE}
-readd(results)
-#> # A tibble: 4 x 6
-#>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
-#>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
-#> 1        0.4    0.999     1.02              100           20             10
-#> 2        0.388  0.998     1.02              200           20             10
-#> 3        0.39   1.00      1.02              300           20             10
-#> 4        0.4    0.996     1.03              400           20             10
-```
-
----
-
 ## Tangible evidence of reproducibility.
 
-```{r, eval = FALSE}
+```{r}
 r_make()
 #> ✓ All targets are already up to date.
 ```
@@ -502,16 +477,6 @@ Changing workflows | [`3-changes/3-changes.Rmd`](https://github.com/wlandau/lear
 Static branching | [`4-static/4-static.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/4-static/4-static.Rmd)
 Dynamic branching | [`5-dynamic/5-dynamic.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/5-dynamic/5-dynamic.Rmd)
 Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/6-files/6-files.Rmd)
-
----
-
-## rOpenSci use cases
-
-- Use [`drake`](https://github.com/ropensci/drake)? Share your use case at <https://ropensci.org/usecases>.
-
-<center>
-<img src = "./images/ropensci.png" style="border: none; box-shadow: none; height: 150px">
-</center>
 
 ---
 
@@ -561,6 +526,15 @@ Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learnd
 
 ---
 
+## rOpenSci use cases
+
+- Use [`drake`](https://github.com/ropensci/drake)? Share your use case at <https://ropensci.org/usecases>.
+
+<center>
+<img src = "./images/ropensci.png" style="border: none; box-shadow: none; height: 150px">
+</center>
+
+---
 
 ## References
 
