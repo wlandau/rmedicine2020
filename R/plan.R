@@ -1,6 +1,6 @@
 plan <- drake_plan(
   sim = target(
-    seq_len(10),
+    seq_len(1e3),
     hpc = FALSE
   ),
   patients = target(
@@ -15,7 +15,7 @@ plan <- drake_plan(
     format = "fst_tbl"
   ),
   models = target(
-    model_hazard(patients, 100),
+    model_hazard(patients, 2e3),
     dynamic = map(patients),
     transform = map(patients, .id = patients_per_arm),
     format = "fst_tbl"
