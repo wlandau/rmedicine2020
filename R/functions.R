@@ -21,7 +21,7 @@ simulate_trial <- function(
 ) {
   bind_rows(
     simulate_arm(mean_control, censor, patients_per_arm, "control"),
-    simulate_arm(mean_control, censor, patients_per_arm, "treatment")
+    simulate_arm(mean_treatment, censor, patients_per_arm, "treatment")
   ) %>%
     mutate(
       patients_per_arm = patients_per_arm,
@@ -51,7 +51,7 @@ simulate_arm <- function(
     n = patients_per_arm,
     a = 1,
     mean = mean,
-    sd = 5
+    sd = 10
   )
   tibble(days = days) %>%
     mutate(censored = days > censor) %>%
@@ -117,7 +117,7 @@ summarize_samples <- function(samples, patients) {
   hazard_ratio_list <- map(samples, ~as.mcmc(t(exp(.x$beta))))
   hazard_ratio <- unlist(hazard_ratio_list)
   tibble(
-    prob_effect = mean(hazard_ratio > 1),
+    prob_effect = mean(hazard_ratio > 1.5),
     median = median(hazard_ratio),
     psrf = gelman.diag(hazard_ratio_list, multivariate = FALSE)$psrf[, 1],
     patients_per_arm = patients$patients_per_arm[1],

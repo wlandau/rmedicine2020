@@ -5,7 +5,7 @@ plan <- drake_plan(
   ),
   patients = target(
     simulate_trial(
-      mean_control = 20,
+      mean_control = 15,
       mean_treatment = 10,
       patients_per_arm = patients_per_arm,
       censor = 30
