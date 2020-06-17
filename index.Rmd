@@ -159,10 +159,11 @@ options(
 * Goal: understand the operating characteristics of a 200-patient trial under different effect size scenarios.
 * Patient population: hospitalized patients with moderate symptoms.
 * Endpoint: days until the patient is discharged from the hospital.
-* Decision: graduate to phase 3 if Prob(hazard ratio (of discharge) > 1.5) > 0.6 at the end of the study.
+* Decision: graduate to phase 3 at the end of the study if Prob(hazard ratio (of discharge) > 1.5) > 0.6.
 * Simulation:
     1. Simulate time to event data from each arm (1 treatment and 1 placebo) from normal distributions (left-truncated right-censored).
-    2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html))
+    2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html)).
+    3. Aggregate over simulations to calculate operating characteristics.
 
 ---
 
@@ -372,10 +373,10 @@ r_make()
 ```{r}
 > readd(results)
 #> # A tibble: 2 x 6
-#>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
-#>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
-#> 1        0.996  2.36      1.03              100           20             10
-#> 2        0.001  0.997     1.02              100           20             20
+#>   prob_success mean_treatment mean_control patients_per_arm median max_psrf
+#>          <dbl>          <dbl>        <dbl>            <dbl>  <dbl>    <dbl>
+#> 1        0.996             10           20              100  2.36      1.03
+#> 2        0.001             20           20              100  0.997     1.02
 ```
 
 ---
@@ -436,11 +437,11 @@ r_make()
 ```{r}
 readd(results)
 #> # A tibble: 3 x 6
-#>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
-#>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
-#> 1        0.996  2.36      1.03              100           20             10
-#> 2        0.503  1.56      1.03              100           20             15
-#> 3        0.001  0.997     1.02              100           20             20
+#>   prob_success mean_treatment mean_control patients_per_arm median max_psrf
+#>          <dbl>          <dbl>        <dbl>            <dbl>  <dbl>    <dbl>
+#> 1        0.996             10           20              100  2.36      1.03
+#> 2        0.503             15           20              100  1.56      1.03
+#> 3        0.001             20           20              100  0.997     1.02
 ```
 
 ---
