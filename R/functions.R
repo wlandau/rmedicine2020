@@ -149,10 +149,10 @@ summarize_models <- function(models) {
   summarize(
     models,
     prob_success = mean(prob_effect > 0.6),
-    median = median(median),
-    max_psrf = max(psrf),
-    patients_per_arm = patients_per_arm[1],
+    mean_treatment = mean_treatment[1],
     mean_control = mean_control[1],
-    mean_treatment = mean_treatment[1]
+    patients_per_arm = patients_per_arm[1],
+    median = median(median),
+    max_psrf = max(psrf)
   )
 }
