@@ -351,10 +351,23 @@ plot(plan)
 
 ```{r, eval = FALSE}
 r_make()
-#> ▶ dynamic patients_300
-#> > subtarget patients_300_0b3474bd
-#> > subtarget patients_300_b2a5c9b8
+#> ▶ dynamic patients_100
+#> > subtarget patients_100_0b3474bd
+#> > subtarget patients_100_b2a5c9b8
 # ...
+#> ■ finalize patients_100
+#> ▶ dynamic patients_200
+#> ▶ dynamic patients_300
+#> ▶ dynamic patients_400
+#> ▶ dynamic models_100
+#> ▶ dynamic models_200
+#> ▶ dynamic models_300
+#> ▶ dynamic models_400
+#> ▶ target summaries_100
+#> ▶ target summaries_200
+#> ▶ target summaries_300
+#> ▶ target summaries_400
+#> ▶ target results
 ```
 
 ---
@@ -422,9 +435,10 @@ r_make()
 
 ## New combined results
 
-* We have been testing on a small number of simulations, and the format of the data is correct.
-* The answers do not make sense yet, but now we are ready to scale up the computation (more simulated trials, more MCMC samples).
-* The code at <https://github.com/wlandau/rmedicine2020> is configured to run targets in parallel on a Sun Grid Engine cluster. Execute `run.sh` or `run.R` to deploy the pipeline.
+* The largest sample size should be the most powerful, and some of the MCMCs did not converge.
+* We need to run more trial simulations and MCMC samples.
+* The code at <https://github.com/wlandau/rmedicine2020> scaled up and configured to run targets in parallel on a Sun Grid Engine cluster.
+    * Execute `run.sh` or `run.R` to deploy the pipeline.
 
 ```{r, eval = FALSE}
 readd(results)
