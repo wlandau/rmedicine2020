@@ -455,6 +455,16 @@ readd(results)
 
 ## After scaled-up computation on a cluster
 
+```{r, eval = FALSE}
+readd(results)
+#> # A tibble: 4 x 6
+#>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
+#>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
+#> 1        0.4    0.999     1.02              100           20             10
+#> 2        0.388  0.998     1.02              200           20             10
+#> 3        0.39   1.00      1.02              300           20             10
+#> 4        0.4    0.996     1.03              400           20             10
+```
 
 ---
 

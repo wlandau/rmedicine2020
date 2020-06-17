@@ -12,7 +12,7 @@
 #' @param mean_treatment Mean time until hospital discharge for the treatment arm.
 #' @inheritParams simulate_arm
 #' @examples
-#' simulate_trial()
+#' simulate_trial(patients_per_arm = 200)
 simulate_trial <- function(
   mean_control = 15,
   mean_treatment = 10,
@@ -47,7 +47,13 @@ simulate_arm <- function(
   patients_per_arm = 100,
   arm = "control"
 ) {
-  tibble(days = rexp(n = patients_per_arm, rate = 1 / mean)) %>%
+  days <- rtruncnorm(
+    n = patients_per_arm,
+    a = 1,
+    mean = mean,
+    sd = 5
+  )
+  tibble(days = days) %>%
     mutate(censored = days > censor) %>%
     mutate(days = pmin(days, censor)) %>%
     mutate(arm = arm)
