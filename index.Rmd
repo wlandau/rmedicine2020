@@ -70,26 +70,6 @@ options(
   drake_make_menu = FALSE,
   htmltools.dir.version = FALSE
 )
-packages <- c(
-  "drake",
-  "learndrake",
-  "keras",
-  "recipes",
-  "rsample",
-  "tidyverse",
-  "yardstick"
-)
-purrr::walk(
-  packages,
-  function(pkg) {
-    suppressMessages(suppressWarnings(library(pkg, character.only = TRUE)))
-  }
-)
-drake:::r_make_message(force = TRUE)
-if (file.exists(".drake")) {
-  drake_cache()$unlock()
-}
-clean(destroy = TRUE)
 ```
 
 ## Large statistical computation
@@ -116,7 +96,7 @@ clean(destroy = TRUE)
 <img src = "./images/sisyphus.svg" align="left" style="border: none; box-shadow: none; height: 375px; text-align: center;">
 <br>
 
-* <https://openclipart.org/detail/275842/sisyphus-overcoming-silhouette>
+<!--https://openclipart.org/detail/275842/sisyphus-overcoming-silhouette-->
 
 ---
 
@@ -172,79 +152,303 @@ clean(destroy = TRUE)
 
 ---
 
-## Example drake workflow: COVID-19 clinical trial simulation
+## Example: COVID-19 clinical trial simulation
 
 * Motivation: design a placebo-controlled phase 2 clinical trial of a potential new treatment of COVID-19.
 * Patient population: hospitalized patients with moderate symptoms.
 * Endpoint: days until discharge from the hospital.
 * Goal: find the minimum sample size required to observe a high effect size with high enough certainty.
-* Decision: go to phase 3 if Prob(hazard ratio (of discharge) > 1.25) > 0.6 at the end of the study.
+* Decision: go to phase 3 if Prob(hazard ratio (of discharge) > 1) > 0.6 at the end of the study.
 * Simulation:
     1. Simulate time to event data from each arm (1 treatment and 1 placebo) from exponential distributions.
     2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html))
 
 ---
 
-## `drake` workflows are function-oriented.
+## File structure
+
+* Full source code: <https://github.com/wlandau/rmedicine2020>
+
+```{r, eval = FALSE}
+run.sh
+run.R
+_drake.R
+sge.tmpl
+R/
+├── packages.R
+├── functions.R
+└── plan.R
+```
+
+---
+
+## A nudge toward function-oriented programming
 
 >    - Everything that exists is an object.
 >    - Everything that happens is a function call.
 >
 > John Chambers
 
+---
+
+## `functions.R`
+
 ```{r}
-add_things <- function(argument1, argument2) {
-  argument1 + argument2
+simulate_trial <- function(
+  mean_control = 15,
+  mean_treatment = 10,
+  patients_per_arm = 100,
+  censor = 30
+) {
+  bind_rows(
+    simulate_arm(mean_control, censor, patients_per_arm, "control"),
+    simulate_arm(mean_control, censor, patients_per_arm, "treatment")
+  ) %>%
+    mutate(
+      patients_per_arm = patients_per_arm,
+      mean_control = mean_control,
+      mean_treatment = mean_treatment
+    )
+}
+```
+
+---
+
+## `functions.R`
+
+```{r}
+model_hazard <- function(patients, iterations) {
+  samples <- map(seq_len(4), ~run_chain(patients, iterations))
+  summarize_samples(samples, patients)
 }
 
-add_things(1, 2)
+summarize_samples <- function(samples, patients) {
+  hazard_ratio_list <- map(samples, ~as.mcmc(t(exp(.x$beta))))
+  hazard_ratio <- unlist(hazard_ratio_list)
+  tibble(
+    prob_effect = mean(hazard_ratio > 1),
+    median = median(hazard_ratio),
+    psrf = gelman.diag(hazard_ratio_list, multivariate = FALSE)$psrf[, 1],
+    patients_per_arm = patients$patients_per_arm[1],
+    mean_control = patients$mean_control[1],
+    mean_treatment = patients$mean_treatment[1]
+  )
+}
 
-add_things(c(3, 4), c(5, 6))
+# And a few more...
 ```
 
 ---
 
-## File structure
+## `plan.R`
 
-```
-
-```
-
-
-## More highlights
-
-* [High-performance computing](https://books.ropensci.org/drake/hpc.html)
-* [Efficient data formats](https://books.ropensci.org/drake/plans.html#special-data-formats-for-targets)
-* [Dynamic branching](https://books.ropensci.org/drake/dynamic.html)
-* [Dynamic files](https://books.ropensci.org/drake/plans.html#dynamic-files)
-* [Memory management](https://books.ropensci.org/drake/memory.html)
+* A `drake` plan is an outline of the steps of a pipeline.
 
 ```{r, eval = FALSE}
-# Run targets in parallel on a cluster:
-options(clustermq.scheduler = "slurm")
-make(plan, parallelism = "clustermq", jobs = 64)
+plan <- drake_plan(
+  sim = target(
+    seq_len(10),
+    hpc = FALSE
+  ),
+  patients = target(
+    simulate_trial(
+      mean_control = 20,
+      mean_treatment = 10,
+      patients_per_arm = patients_per_arm,
+      censor = 30
+    ),
+    dynamic = map(sim),
+    transform = map(patients_per_arm = c(100, 200, 300)),
+    format = "fst_tbl"
+  ),
 ```
 
 ---
 
-## Resources
+## `plan.R`
 
-* Get [`drake`](https://github.com/ropensci/drake):
+* A `drake` plan is an outline of the steps of a pipeline.
 
 ```{r, eval = FALSE}
-install.packages("drake")
+  models = target(
+    model_hazard(patients, 100),
+    dynamic = map(patients),
+    transform = map(patients, .id = patients_per_arm),
+    format = "fst_tbl"
+  ),
+  summaries = target(
+    summarize_models(models),
+    transform = map(models, .id = patients_per_arm),
+    format = "fst_tbl"
+  ),
+  results = target(
+    bind_rows(summaries),
+    transform = combine(summaries),
+    format = "fst_tbl",
+    hpc = FALSE
+  )
+)
 ```
 
-* Example code from these slides:
-
-```{r, eval = FALSE}
-drake::drake_example("customer-churn")
+```{r, include = FALSE}
+plan <- drake::drake_plan(
+  sim = target(
+    seq_len(10),
+    hpc = FALSE
+  ),
+  patients = target(
+    simulate_trial(
+      mean_control = 20,
+      mean_treatment = 10,
+      patients_per_arm = patients_per_arm,
+      censor = 30
+    ),
+    dynamic = map(sim),
+    transform = map(patients_per_arm = c(100, 200, 300)),
+    format = "fst_tbl"
+  ),
+  models = target(
+    model_hazard(patients, 100),
+    dynamic = map(patients),
+    transform = map(patients, .id = patients_per_arm),
+    format = "fst_tbl"
+  ),
+  summaries = target(
+    summarize_models(models),
+    transform = map(models, .id = patients_per_arm),
+    format = "fst_tbl"
+  ),
+  results = target(
+    bind_rows(summaries),
+    transform = combine(summaries),
+    format = "fst_tbl",
+    hpc = FALSE
+  )
+)
 ```
 
-* Workshop materials:
+---
+
+## Plan objects are data frames.
+
+```{r}
+plan
+```
+
+---
+
+## Pipelines are directed acyclic graphs
 
 ```{r, eval = FALSE}
-remotes::install_github("wlandau/learndrake")
+plot(plan)
+```
+
+![](./images/graph1.png)
+
+---
+
+## Run the pipeline with `r_make()`
+
+```{r, eval = FALSE}
+r_make()
+#> ▶ dynamic patients_300
+#> > subtarget patients_300_0b3474bd
+#> > subtarget patients_300_b2a5c9b8
+# ...
+```
+
+---
+
+## Inspect the results
+
+```{r, eval = FALSE}
+> readd(results)
+#> # A tibble: 3 x 6
+#>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
+#>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
+#> 1          0.3  0.986     1.12              100           20             10
+#> 2          0.4  0.958     1.26              200           20             10
+#> 3          0.7  1.04      1.24              300           20             10
+```
+
+---
+
+## Add a sample size
+
+```{r, eval = FALSE}
+plan <- drake_plan(
+  # ...
+  patients = target(
+    simulate_trial(
+      mean_control = 20,
+      mean_treatment = 10,
+      patients_per_arm = patients_per_arm,
+      censor = 30
+    ),
+    dynamic = map(sim),
+    transform = map(patients_per_arm = c(100, 200, 300, 400)), #<<
+    format = "fst_tbl"
+  ),
+  # ...
+```
+
+---
+
+## The old targets are still up to date.
+
+![](./images/graph2.png)
+
+---
+
+## Only the new or outdated targets run this time.
+
+```{r, eval = FALSE}
+r_make()
+#> ▶ dynamic patients_400
+#> > subtarget patients_400_0b3474bd
+#> > subtarget patients_400_b2a5c9b8
+#> ...
+#> ■ finalize patients_400
+#> ▶ dynamic models_400
+#> > subtarget models_400_988dca98
+#> > subtarget models_400_de6279d2
+#> ...
+#> ■ finalize models_400
+#> ▶ target summaries_400
+#> ▶ target results
+```
+
+---
+
+## New combined results
+
+* We have been testing on a small number of simulations, and the format of the data is correct.
+* The answers do not make sense yet, but now we are ready to scale up the computation (more simulated trials, more MCMC samples).
+* The code at <https://github.com/wlandau/rmedicine2020> is configured to run targets in parallel on a Sun Grid Engine cluster. Execute `run.sh` or `run.R` to deploy the pipeline.
+
+```{r, eval = FALSE}
+readd(results)
+#> # A tibble: 4 x 6
+#>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
+#>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
+#> 1          0.3  0.986     1.12              100           20             10
+#> 2          0.4  0.958     1.26              200           20             10
+#> 3          0.7  1.04      1.24              300           20             10
+#> 4          0.1  0.991     1.30              400           20             10
+```
+
+---
+
+## After scaled-up computation on a cluster
+
+
+---
+
+## Tangible evidence of reproducibility.
+
+```{r, eval = FALSE}
+r_make()
+#> ✓ All targets are already up to date.
 ```
 
 ---
@@ -257,6 +461,25 @@ remotes::install_github("wlandau/learndrake")
 - Hands-on workshop: <https://github.com/wlandau/learndrake>
 - Code examples: <https://github.com/wlandau/drake-examples>
 - Discuss at rOpenSci.org: <https://discuss.ropensci.org>
+
+---
+
+## The online workshop
+
+1. Sign up for a free account at <https://rstudio.cloud>.
+2. Log into <https://rstudio.cloud/project/627076>.
+3. Work through the R notebooks in order.
+
+Topic | Notebook
+---|---
+Custom functions | [`1-functions/1-functions.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/1-functions/1-functions.Rmd)
+`drake` plans | [`2-plans/2-plans.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/2-plans/2-plans.Rmd)
+Changing workflows | [`3-changes/3-changes.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/3-changes/3-changes.Rmd)
+Static branching | [`4-static/4-static.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/4-static/4-static.Rmd)
+Dynamic branching | [`5-dynamic/5-dynamic.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/5-dynamic/5-dynamic.Rmd)
+Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/6-files/6-files.Rmd)
+
+---
 
 ## rOpenSci use cases
 
@@ -314,27 +537,8 @@ remotes::install_github("wlandau/learndrake")
 
 ---
 
-## The online workshop
-
-1. Sign up for a free account at <https://rstudio.cloud>.
-2. Log into <https://rstudio.cloud/project/627076>.
-3. Work through the R notebooks in order.
-
-Topic | Notebook
----|---
-Custom functions | [`1-functions/1-functions.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/1-functions/1-functions.Rmd)
-`drake` plans | [`2-plans/2-plans.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/2-plans/2-plans.Rmd)
-Changing workflows | [`3-changes/3-changes.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/3-changes/3-changes.Rmd)
-Static branching | [`4-static/4-static.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/4-static/4-static.Rmd)
-Dynamic branching | [`5-dynamic/5-dynamic.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/5-dynamic/5-dynamic.Rmd)
-Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/6-files/6-files.Rmd)
 
 ## References
 
 1. Landau, William Micahel. "The drake R package: a pipeline toolkit for reproducibility and high-performance computing." *Jounral of Open Source Software*, 3 (21), 2018. [doi:10.21105/joss.00550](https://joss.theoj.org/papers/10.21105/joss.00550) 
 2. Zhou, Haiming and Hanson, Timothy and Zhang, Jiajia. "spBayesSurv: Fitting Bayesian Survival Models Using R". `Journal of Statistical Software`, 92 (9), 2020. [doi:10.18637/jss.v092.i09](https://doi.org/10.18637/jss.v092.i09).
-
-
-```{r, include = FALSE}
-clean(destroy = TRUE)
-```

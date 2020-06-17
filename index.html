@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Reproducible computation at scale with drake</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Will Landau" />
+    <script src="index_files/header-attrs/header-attrs.js"></script>
+    <link href="index_files/remark-css/default.css" rel="stylesheet" />
+    <link href="index_files/remark-css/default-fonts.css" rel="stylesheet" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Reproducible computation at scale with drake
+### Will Landau
+
+---
+
+
+&lt;style&gt;
+.inverse {
+background-color: transparent;
+text-shadow: 0 0 0px transparent;
+}
+.title-slide {
+vertical-align: bottom !important; 
+text-align: center !important;
+}
+.title-slide h1 {
+position: absolute;
+top: 0;
+left: 0;
+right: 0;
+width: 100%;
+line-height: 4em;
+color: #666666;
+}
+.title-slide h3 {
+line-height: 6em;
+color: #666666;
+}
+.title-slide {
+background-color: white;
+background-image: url('images/logo.png');
+background-repeat: no-repeat;
+background-size: 25%;
+}
+.remark-slide-content:after {
+content: "Copyright Eli Lilly and Company";
+position: absolute;
+bottom: -5px;
+left: 10px;
+height: 40px;
+width: 100%;
+font-family: Helvetica, Arial, sans-serif;
+font-size: 0.7em;
+color: gray;
+background-repeat: no-repeat;
+background-size: contain;
+}
+&lt;/style&gt;
+
+
+
+
+
+## Large statistical computation
+
+* [Bayesian data analysis](https://mc-stan.org/)
+* [Bayesian network meta-analysis](https://bookdown.org/MathiasHarrer/Doing_Meta_Analysis_in_R/bayesian-network-meta-analysis.html)
+* [Graph-based multiple comparison procedures](https://github.com/kornl/gMCP)
+* [Subgroup identification](https://cran.r-project.org/web/packages/TSDT/index.html)
+* [Predictive modeling](http://appliedpredictivemodeling.com/computing)
+* [Deep neural networks](https://keras.rstudio.com/)
+* [PK/PD modeling](https://github.com/nlmixrdevelopment/nlmixr)
+* Clinical trial simulation
+* Target identification
+
+---
+
+## Common features
+
+1. Heavy use of the [R language](https://www.r-project.org/).
+2. Long runtimes.
+3. Multiple sub-tasks.
+4. Frequent changes to code and data.
+
+&lt;img src = "./images/sisyphus.svg" align="left" style="border: none; box-shadow: none; height: 375px; text-align: center;"&gt;
+&lt;br&gt;
+
+&lt;!--https://openclipart.org/detail/275842/sisyphus-overcoming-silhouette--&gt;
+
+---
+
+## Interconnected tasks
+&lt;center&gt;
+&lt;img src = "./images/workflow.png" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
+&lt;/center&gt;
+
+---
+
+## Changes
+
+&lt;center&gt;
+&lt;img src = "./images/change.png" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
+&lt;/center&gt;
+
+---
+
+## Consequences
+
+&lt;center&gt;
+&lt;img src = "./images/downstream.png" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
+&lt;/center&gt;
+
+---
+
+## Pipeline tools and workflow managers
+
+&lt;center&gt;
+&lt;img src = "./images/infographic.svg" align="middle" style="border: none; box-shadow: none; text-align: center;"&gt;
+&lt;/center&gt;
+
+- Several exist already: [github.com/pditommaso/awesome-pipeline](https://github.com/pditommaso/awesome-pipeline).
+- Most are language-agnostic or designed for Python or the shell.
+
+---
+
+## What distinguishes `drake`?
+
+&lt;center&gt;
+&lt;img src = "./images/R.png" align="middle" style="border: none; box-shadow: none; text-align: center; height: 200px"&gt;
+&lt;/center&gt;
+
+.large[
+* Respects the way R works.
+* Better code, i.e. functions.
+* Time savings allow for an incremental development strategy:
+    1. Change a couple things.
+    2. Run the workflow.
+    3. Inspect results.
+    4. *Repeat often*.
+]
+
+---
+
+## Example: COVID-19 clinical trial simulation
+
+* Motivation: design a placebo-controlled phase 2 clinical trial of a potential new treatment of COVID-19.
+* Patient population: hospitalized patients with moderate symptoms.
+* Endpoint: days until discharge from the hospital.
+* Goal: find the minimum sample size required to observe a high effect size with high enough certainty.
+* Decision: go to phase 3 if Prob(hazard ratio (of discharge) &gt; 1) &gt; 0.6 at the end of the study.
+* Simulation:
+    1. Simulate time to event data from each arm (1 treatment and 1 placebo) from exponential distributions.
+    2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html))
+
+---
+
+## File structure
+
+* Full source code: &lt;https://github.com/wlandau/rmedicine2020&gt;
+
+
+```r
+run.sh
+run.R
+_drake.R
+sge.tmpl
+R/
+├── packages.R
+├── functions.R
+└── plan.R
+```
+
+---
+
+## A nudge toward function-oriented programming
+
+&gt;    - Everything that exists is an object.
+&gt;    - Everything that happens is a function call.
+&gt;
+&gt; John Chambers
+
+---
+
+## `functions.R`
+
+
+```r
+simulate_trial &lt;- function(
+  mean_control = 15,
+  mean_treatment = 10,
+  patients_per_arm = 100,
+  censor = 30
+) {
+  bind_rows(
+    simulate_arm(mean_control, censor, patients_per_arm, "control"),
+    simulate_arm(mean_control, censor, patients_per_arm, "treatment")
+  ) %&gt;%
+    mutate(
+      patients_per_arm = patients_per_arm,
+      mean_control = mean_control,
+      mean_treatment = mean_treatment
+    )
+}
+```
+
+---
+
+## `functions.R`
+
+
+```r
+model_hazard &lt;- function(patients, iterations) {
+  samples &lt;- map(seq_len(4), ~run_chain(patients, iterations))
+  summarize_samples(samples, patients)
+}
+
+summarize_samples &lt;- function(samples, patients) {
+  hazard_ratio_list &lt;- map(samples, ~as.mcmc(t(exp(.x$beta))))
+  hazard_ratio &lt;- unlist(hazard_ratio_list)
+  tibble(
+    prob_effect = mean(hazard_ratio &gt; 1),
+    median = median(hazard_ratio),
+    psrf = gelman.diag(hazard_ratio_list, multivariate = FALSE)$psrf[, 1],
+    patients_per_arm = patients$patients_per_arm[1],
+    mean_control = patients$mean_control[1],
+    mean_treatment = patients$mean_treatment[1]
+  )
+}
+
+# And a few more...
+```
+
+---
+
+## `plan.R`
+
+* A `drake` plan is an outline of the steps of a pipeline.
+
+
+```r
+plan &lt;- drake_plan(
+  sim = target(
+    seq_len(10),
+    hpc = FALSE
+  ),
+  patients = target(
+    simulate_trial(
+      mean_control = 20,
+      mean_treatment = 10,
+      patients_per_arm = patients_per_arm,
+      censor = 30
+    ),
+    dynamic = map(sim),
+    transform = map(patients_per_arm = c(100, 200, 300)),
+    format = "fst_tbl"
+  ),
+```
+
+---
+
+## `plan.R`
+
+* A `drake` plan is an outline of the steps of a pipeline.
+
+
+```r
+  models = target(
+    model_hazard(patients, 100),
+    dynamic = map(patients),
+    transform = map(patients, .id = patients_per_arm),
+    format = "fst_tbl"
+  ),
+  summaries = target(
+    summarize_models(models),
+    transform = map(models, .id = patients_per_arm),
+    format = "fst_tbl"
+  ),
+  results = target(
+    bind_rows(summaries),
+    transform = combine(summaries),
+    format = "fst_tbl",
+    hpc = FALSE
+  )
+)
+```
+
+
+
+---
+
+## Plan objects are data frames.
+
+
+```r
+plan
+#&gt; # A tibble: 11 x 5
+#&gt;    target     command                                   hpc   dynamic     format
+#&gt;    &lt;chr&gt;      &lt;expr_lst&gt;                                &lt;lgl&gt; &lt;expr_lst&gt;  &lt;chr&gt; 
+#&gt;  1 models_100 model_hazard(patients_100, 100)         … NA    map(patien… fst_t…
+#&gt;  2 models_200 model_hazard(patients_200, 100)         … NA    map(patien… fst_t…
+#&gt;  3 models_300 model_hazard(patients_300, 100)         … NA    map(patien… fst_t…
+#&gt;  4 patients_… simulate_trial(mean_control = 20, mean_t… NA    map(sim)  … fst_t…
+#&gt;  5 patients_… simulate_trial(mean_control = 20, mean_t… NA    map(sim)  … fst_t…
+#&gt;  6 patients_… simulate_trial(mean_control = 20, mean_t… NA    map(sim)  … fst_t…
+#&gt;  7 results    bind_rows(summaries_100, summaries_200, … FALSE NA        … fst_t…
+#&gt;  8 sim        seq_len(10)                             … FALSE NA        … &lt;NA&gt;  
+#&gt;  9 summaries… summarize_models(models_100)            … NA    NA        … fst_t…
+#&gt; 10 summaries… summarize_models(models_200)            … NA    NA        … fst_t…
+#&gt; 11 summaries… summarize_models(models_300)            … NA    NA        … fst_t…
+```
+
+---
+
+## Pipelines are directed acyclic graphs
+
+
+```r
+plot(plan)
+```
+
+![](./images/graph1.png)
+
+---
+
+## Run the pipeline with `r_make()`
+
+
+```r
+r_make()
+#&gt; ▶ dynamic patients_300
+#&gt; &gt; subtarget patients_300_0b3474bd
+#&gt; &gt; subtarget patients_300_b2a5c9b8
+# ...
+```
+
+---
+
+## Inspect the results
+
+
+```r
+&gt; readd(results)
+#&gt; # A tibble: 3 x 6
+#&gt;   prob_success median max_psrf patients_per_arm mean_control mean_treatment
+#&gt;          &lt;dbl&gt;  &lt;dbl&gt;    &lt;dbl&gt;            &lt;dbl&gt;        &lt;dbl&gt;          &lt;dbl&gt;
+#&gt; 1          0.3  0.986     1.12              100           20             10
+#&gt; 2          0.4  0.958     1.26              200           20             10
+#&gt; 3          0.7  1.04      1.24              300           20             10
+```
+
+---
+
+## Add a sample size
+
+
+```r
+plan &lt;- drake_plan(
+  # ...
+  patients = target(
+    simulate_trial(
+      mean_control = 20,
+      mean_treatment = 10,
+      patients_per_arm = patients_per_arm,
+      censor = 30
+    ),
+    dynamic = map(sim),
+*   transform = map(patients_per_arm = c(100, 200, 300, 400)),
+    format = "fst_tbl"
+  ),
+  # ...
+```
+
+---
+
+## The old targets are still up to date.
+
+![](./images/graph2.png)
+
+---
+
+## Only the new or outdated targets run this time.
+
+
+```r
+r_make()
+#&gt; ▶ dynamic patients_400
+#&gt; &gt; subtarget patients_400_0b3474bd
+#&gt; &gt; subtarget patients_400_b2a5c9b8
+#&gt; ...
+#&gt; ■ finalize patients_400
+#&gt; ▶ dynamic models_400
+#&gt; &gt; subtarget models_400_988dca98
+#&gt; &gt; subtarget models_400_de6279d2
+#&gt; ...
+#&gt; ■ finalize models_400
+#&gt; ▶ target summaries_400
+#&gt; ▶ target results
+```
+
+---
+
+## New combined results
+
+* We have been testing on a small number of simulations, and the format of the data is correct.
+* The answers do not make sense yet, but now we are ready to scale up the computation (more simulated trials, more MCMC samples).
+* The code at &lt;https://github.com/wlandau/rmedicine2020&gt; is configured to run targets in parallel on a Sun Grid Engine cluster. Execute `run.sh` or `run.R` to deploy the pipeline.
+
+
+```r
+readd(results)
+#&gt; # A tibble: 4 x 6
+#&gt;   prob_success median max_psrf patients_per_arm mean_control mean_treatment
+#&gt;          &lt;dbl&gt;  &lt;dbl&gt;    &lt;dbl&gt;            &lt;dbl&gt;        &lt;dbl&gt;          &lt;dbl&gt;
+#&gt; 1          0.3  0.986     1.12              100           20             10
+#&gt; 2          0.4  0.958     1.26              200           20             10
+#&gt; 3          0.7  1.04      1.24              300           20             10
+#&gt; 4          0.1  0.991     1.30              400           20             10
+```
+
+---
+
+## After a longer computation on a cluster
+
+
+---
+
+## Tangible evidence of reproducibility.
+
+
+```r
+r_make()
+#&gt; ✓ All targets are already up to date.
+```
+
+---
+
+## Links
+
+- Development repository: &lt;https://github.com/ropensci/drake&gt;
+- Full user manual &lt;https://books.ropensci.org/drake/&gt;
+- Reference website: &lt;https://docs.ropensci.org/drake&gt;
+- Hands-on workshop: &lt;https://github.com/wlandau/learndrake&gt;
+- Code examples: &lt;https://github.com/wlandau/drake-examples&gt;
+- Discuss at rOpenSci.org: &lt;https://discuss.ropensci.org&gt;
+
+---
+
+## The online workshop
+
+1. Sign up for a free account at &lt;https://rstudio.cloud&gt;.
+2. Log into &lt;https://rstudio.cloud/project/627076&gt;.
+3. Work through the R notebooks in order.
+
+Topic | Notebook
+---|---
+Custom functions | [`1-functions/1-functions.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/1-functions/1-functions.Rmd)
+`drake` plans | [`2-plans/2-plans.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/2-plans/2-plans.Rmd)
+Changing workflows | [`3-changes/3-changes.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/3-changes/3-changes.Rmd)
+Static branching | [`4-static/4-static.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/4-static/4-static.Rmd)
+Dynamic branching | [`5-dynamic/5-dynamic.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/5-dynamic/5-dynamic.Rmd)
+Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/6-files/6-files.Rmd)
+
+---
+
+## rOpenSci use cases
+
+- Use [`drake`](https://github.com/ropensci/drake)? Share your use case at &lt;https://ropensci.org/usecases&gt;.
+
+&lt;center&gt;
+&lt;img src = "./images/ropensci.png" style="border: none; box-shadow: none; height: 150px"&gt;
+&lt;/center&gt;
+
+---
+
+## Thanks
+
+&lt;table style = "border: none"&gt;
+&lt;tr&gt;
+&lt;td&gt;
+&lt;br&gt;
+&lt;ul&gt;
+&lt;img src = "./images/ropensci.png" style="border: none; box-shadow: none; height: 150px"&gt;
+&lt;li&gt;&lt;a href = "https://github.com/maelle"&gt;Maëlle Salmon&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/benmarwick"&gt;Ben Marwick&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/jules32"&gt;Julia Lowndes&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/gothub"&gt;Peter Slaughter&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/jennybc"&gt;Jenny Bryan&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/richfitz"&gt;Rich FitzJohn&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/stefaniebutland"&gt;Stefanie Butland&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/td&gt;
+&lt;td&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href = "https://github.com/jarad"&gt;Jarad Niemi&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/krlmlr"&gt;Kirill Müller&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/HenrikBengtsson"&gt;Henrik Bengtsson&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/mschubert"&gt;Michael Schubert&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/kendonB"&gt;Kendon Bell&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/milesmcbain"&gt;Miles McBain&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/pat-s"&gt;Patrick Schratz&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/AlexAxthelm"&gt;Alex Axthelm&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/dapperjapper"&gt;Jasper Clarkberg&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/tiernanmartin"&gt;Tiernan Martin&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/BListyg"&gt;Ben Listyg&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/tjmahr"&gt;TJ Mahr&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/bpbond"&gt;Ben Bond-Lamberty&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/tmastny"&gt;Tim Mastny&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/billdenney"&gt;Bill Denney&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/aedobbyn"&gt;Amanda Dobbyn&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/dfalster"&gt;Daniel Falster&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/rkrug"&gt;Rainer Krug&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/bmchorse"&gt;Brianna McHorse&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href = "https://github.com/mrchypark"&gt;Chan-Yub Park&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;
+
+---
+
+
+## References
+
+1. Landau, William Micahel. "The drake R package: a pipeline toolkit for reproducibility and high-performance computing." *Jounral of Open Source Software*, 3 (21), 2018. [doi:10.21105/joss.00550](https://joss.theoj.org/papers/10.21105/joss.00550) 
+2. Zhou, Haiming and Hanson, Timothy and Zhang, Jiajia. "spBayesSurv: Fitting Bayesian Survival Models Using R". `Journal of Statistical Software`, 92 (9), 2020. [doi:10.18637/jss.v092.i09](https://doi.org/10.18637/jss.v092.i09).
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightLines": true
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
