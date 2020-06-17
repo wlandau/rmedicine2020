@@ -156,10 +156,10 @@ options(
 ## Example: COVID-19 clinical trial simulation
 
 * Motivation: design a placebo-controlled phase 2 clinical trial of a potential new treatment of COVID-19.
-* Goal: understand the operating characteristics of the trial under different effect size scenarios.
+* Goal: understand the operating characteristics of a 200-patient trial under different effect size scenarios.
 * Patient population: hospitalized patients with moderate symptoms.
-* Endpoint: days until discharge from the hospital.
-* Decision: go to phase 3 if Prob(hazard ratio (of discharge) > 1.5) > 0.6 at the end of the study.
+* Endpoint: days until the patient is discharged from the hospital.
+* Decision: graduate to phase 3 if Prob(hazard ratio (of discharge) > 1.5) > 0.6 at the end of the study.
 * Simulation:
     1. Simulate time to event data from each arm (1 treatment and 1 placebo) from normal distributions (left-truncated right-censored).
     2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html))
@@ -227,7 +227,7 @@ summarize_samples <- function(samples, patients) {
   hazard_ratio_list <- map(samples, ~as.mcmc(t(exp(.x$beta))))
   hazard_ratio <- unlist(hazard_ratio_list)
   tibble(
-    prob_effect = mean(hazard_ratio > 1),
+    prob_effect = mean(hazard_ratio > 1.5),
     median = median(hazard_ratio),
     psrf = gelman.diag(hazard_ratio_list, multivariate = FALSE)$psrf[, 1],
     patients_per_arm = patients$patients_per_arm[1],
@@ -271,7 +271,7 @@ plan <- drake_plan(
 * A `drake` plan is an outline of the steps of a pipeline.
 
 ```{r}
-models = target(
+  models = target(
     model_hazard(patients, 2e3),
     dynamic = map(patients),
     transform = map(patients, .id = mean_treatment),
@@ -371,12 +371,11 @@ r_make()
 
 ```{r}
 > readd(results)
-#> # A tibble: 3 x 6
+#> # A tibble: 2 x 6
 #>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
 #>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
-#> 1          0.3  0.986     1.12              100           20             10
-#> 2          0.4  0.958     1.26              200           20             10
-#> 3          0.7  1.04      1.24              300           20             10
+#> 1        0.996  2.36      1.03              100           20             10
+#> 2        0.001  0.997     1.02              100           20             20
 ```
 
 ---
@@ -403,6 +402,10 @@ plan <- drake_plan(
 ---
 
 ## The old targets are still up to date.
+
+```{r}
+r_vis_drake_graph()
+```
 
 ![](./images/graph2.png)
 
@@ -432,13 +435,12 @@ r_make()
 
 ```{r}
 readd(results)
-#> # A tibble: 4 x 6
+#> # A tibble: 3 x 6
 #>   prob_success median max_psrf patients_per_arm mean_control mean_treatment
 #>          <dbl>  <dbl>    <dbl>            <dbl>        <dbl>          <dbl>
-#> 1          0.3  0.986     1.12              100           20             10
-#> 2          0.4  0.958     1.26              200           20             10
-#> 3          0.7  1.04      1.24              300           20             10
-#> 4          0.1  0.991     1.30              400           20             10
+#> 1        0.996  2.36      1.03              100           20             10
+#> 2        0.503  1.56      1.03              100           20             15
+#> 3        0.001  0.997     1.02              100           20             20
 ```
 
 ---
