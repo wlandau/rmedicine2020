@@ -1,4 +1,6 @@
 *~
+*.out
+*.Rout
 .Rproj.user
 .Rhistory
 .RData
