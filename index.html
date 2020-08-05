@@ -134,24 +134,20 @@ background-size: contain;
 &lt;/center&gt;
 
 .large[
-* Respects the way R works.
-* Better code, i.e. functions.
-* Time savings allow for an incremental development strategy:
-    1. Change a couple things.
-    2. Run the workflow.
-    3. Inspect results.
-    4. *Repeat often*.
+* Fundamentally designed for R.
+* Supports a clean, modular, function-oriented programming style.
+* Abstracts files as R objects and automatically manages data.
 ]
 
 ---
 
 ## Example: COVID-19 clinical trial simulation
 
-* Motivation: design a placebo-controlled phase 2 clinical trial of a potential new treatment of COVID-19.
+* Motivation: design a randomized placebo-controlled phase 2 clinical trial of a potential new treatment of COVID-19.
 * Goal: understand the operating characteristics of a 200-patient trial under different effect size scenarios.
 * Patient population: hospitalized patients with moderate symptoms.
 * Endpoint: days until the patient is discharged from the hospital.
-* Decision: graduate to phase 3 at the end of the study if Prob(hazard ratio (of discharge) &gt; 1.5) &gt; 0.6.
+* Decision: graduate to phase 3 at the end of the study if Prob(hazard ratio (of hospital discharge) &gt; 1.5) &gt; 0.6.
 * Simulation:
     1. Simulate time to event data from each arm (1 treatment and 1 placebo) from normal distributions (left-truncated right-censored).
     2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html)).
@@ -465,6 +461,8 @@ Changing workflows | [`3-changes/3-changes.Rmd`](https://github.com/wlandau/lear
 Static branching | [`4-static/4-static.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/4-static/4-static.Rmd)
 Dynamic branching | [`5-dynamic/5-dynamic.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/5-dynamic/5-dynamic.Rmd)
 Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/6-files/6-files.Rmd)
+
+* Source materials: <https://github.com/wlandau/learndrake>
 
 ---
 
