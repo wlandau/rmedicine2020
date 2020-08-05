@@ -4,7 +4,7 @@
     <title>Reproducible computation at scale with drake</title>
     <meta charset="utf-8" />
     <meta name="author" content="Will Landau" />
-    <script src="index_files/header-attrs-2.2/header-attrs.js"></script>
+    <script src="index_files/header-attrs-2.3/header-attrs.js"></script>
     <link href="index_files/remark-css-0.0.1/default.css" rel="stylesheet" />
     <link href="index_files/remark-css-0.0.1/default-fonts.css" rel="stylesheet" />
   </head>
@@ -323,6 +323,26 @@ plot(plan)
 
 ---
 
+## Define a top-level configuration script `_drake.R`.
+
+
+```r
+source("R/packages.R")
+source("R/functions.R")
+source("R/plan.R")
+options(clustermq.scheduler = "sge", clustermq.template = "sge.tmpl")
+drake_config(
+  plan,
+  parallelism = "clustermq",
+  jobs = 1000,
+  caching = "worker",
+  recover = TRUE,
+  history = FALSE
+)
+```
+
+---
+
 ## Run the pipeline with `r_make()`
 
 
@@ -462,7 +482,7 @@ Static branching | [`4-static/4-static.Rmd`](https://github.com/wlandau/learndra
 Dynamic branching | [`5-dynamic/5-dynamic.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/5-dynamic/5-dynamic.Rmd)
 Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/6-files/6-files.Rmd)
 
-* Source materials: <https://github.com/wlandau/learndrake>
+* Source materials: &lt;https://github.com/wlandau/learndrake&gt;
 
 ---
 
