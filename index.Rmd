@@ -85,6 +85,12 @@ options(
 * Clinical trial simulation
 * Target identification
 
+???
+
+Thank you all for coming, and thank you to R/Medicine for the opportunity to speak today.
+
+In the life sciences, we develop ambitious computational workflows for Statistics and data science. There's a lot of Bayesian analysis, machine learning, simulation, and prediction. And we need to think about both efficiency and reproducibility right from the start.
+
 ---
 
 ## Common features
@@ -99,12 +105,21 @@ options(
 
 <!--https://openclipart.org/detail/275842/sisyphus-overcoming-silhouette-->
 
+
+???
+
+Many of these projects require long runtimes. Methods like Markov chain Monte Carlo and deep neural nets are computationally expensive. It could take hours or even days just to fit a single model. That's fine if you're only going to run the project once, or at regularly scheduled times. But if the code is still under development, it's easy to get trapped in a vicious Sisyphean cycle.
+
 ---
 
 ## Interconnected tasks
 <center>
 <img src = "./images/workflow.png" align="middle" style="border: none; box-shadow: none; text-align: center;">
 </center>
+
+???
+
+A large workflow has a large number of moving parts. We have datasets that we preprocess or simulate, analyses of those datasets, and summaries of the analyses.
 
 ---
 
@@ -114,6 +129,10 @@ options(
 <img src = "./images/change.png" align="middle" style="border: none; box-shadow: none; text-align: center;">
 </center>
 
+???
+
+If you change any one of these parts - whether it's a bugfix, a tweak to a model, or some new data -
+
 ---
 
 ## Consequences
@@ -121,6 +140,10 @@ options(
 <center>
 <img src = "./images/downstream.png" align="middle" style="border: none; box-shadow: none; text-align: center;">
 </center>
+
+???
+
+Then everything that depends on it is no longer valid, and you need to rerun the computation to bring the results back up to date. This is seriously frustrating when you're in development and you're still making a constant stream of changes to code and data in real time. If every change means you need to rerun the project, there's no way the results can keep up...
 
 ---
 
@@ -132,6 +155,10 @@ options(
 
 - Several exist already: [github.com/pditommaso/awesome-pipeline](https://github.com/pditommaso/awesome-pipeline).
 - Most are language-agnostic or designed for Python or the shell.
+
+???
+
+...unless you use a pipeline tool. There are pipeline tools for production which resemble Apache Airflow, and there are pipeline tools for development which resemble GNU Make. Today, I'm going to focus on Make-like tools because those are the ones I think are designed for this part of the process. It's an action-packed space, and there are a lot of great options. But unfortunately, there's not a whole lot for R.
 
 ---
 
@@ -146,6 +173,10 @@ options(
 * Supports a clean, modular, function-oriented programming style.
 * Abstracts files as R objects and automatically manages data.
 ]
+
+???
+
+That's where drake comes in. drake is a Make-like pipeline tool that is fundamentally designed for R. You can call it from an R session, it supports a clean, idiomatic, function-oriented style of programming, and it helps you store and retrieve your results. Most importantly, it gets you out of the Sisyphean loop of long computation, enhances reproducibility, and takes the frustration out of data science.
 
 ---
 
