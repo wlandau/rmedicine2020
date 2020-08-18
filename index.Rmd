@@ -192,6 +192,10 @@ That's where drake comes in. drake is a Make-like pipeline tool that is fundamen
     2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html)).
     3. Aggregate over simulations to calculate operating characteristics.
 
+???
+
+I am part of a capabilities team at Lilly, and much of our work involves helping other statisticians design clinical trials. 
+
 ---
 
 ## File structure
