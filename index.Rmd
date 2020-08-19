@@ -186,7 +186,7 @@ That's where drake comes in. drake is a Make-like pipeline tool that is fundamen
 * Goal: understand the operating characteristics of a 200-patient trial under different effect size scenarios.
 * Enroll newly hospitalized patients (within 3 days of admission) who do not need supplemental oxygen or ventilation.
 * Endpoint: days until the patient is discharged from the hospital.
-* Decision: graduate to phase 3 at the end of the study if Prob(hazard ratio (of hospital discharge) > 1.5) > 0.6.
+* Efficacy rule: graduate to phase 3 only if Prob(hazard ratio (of hospital discharge) > 1.5) > 0.6.
 * Simulation:
     1. Simulate time to event data from each arm (1 treatment and 1 placebo) from normal distributions (left-truncated right-censored).
     2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html)).
@@ -202,7 +202,7 @@ Now this slide has a mock example clinical trial simulation study. It's not the 
 
 So this is a mock phase 2 trial, and the goal of the simulation is just to understand the trial's operating characteristics. So when is this trial going to claim the therapy works, and when is it going to claim that the therapy doesn't work? We want to design a trial that makes the correct decision without an unnecessarily large sample size. And one of the things we want to find out is whether 200 patients is a good enough.
 
-Suppose we enroll newly hospitalized COVID-19 patients and measure the number of days until they're cleared to leave. We randomize half the patients to the treatment, half to placebo, and measure the drug's ability to shorten the hospital stay. For the end of the trial, there are multiple pre-built criteria to determine whether the therapy moves on to phase 3 studies. Suppose that we meet the efficacy criterion if the probability that the hazard ratio of hospital discharge exceeds one and a half is greater than 60%. 
+Suppose we enroll newly hospitalized COVID-19 patients and measure the number of days until they're cleared to leave. We randomize half the patients to the treatment, half to placebo, and measure the drug's ability to shorten the hospital stay. For the end of the trial, there are multiple pre-built criteria to determine whether the therapy moves on to phase 3 studies, including patient safety, efficacy, and cost effectiveness. Suppose that we meet the efficacy criterion if the probability that the hazard ratio of hospital discharge exceeds one and a half is greater than 60%. 
 
 We assess the design of this trial using simulation. First, we draw time to event data for each study arm from a distribution. Then, we analyze the simulated data and evaluate the efficacy rule using a Bayesian proportional hazards model. We repeat for many simulations, and we aggregate the results to figure out what efficacy decision the trial is likely to make under different scenarios.
 
@@ -225,7 +225,7 @@ R/
 
 ???
 
-So that's the background. Now how do we implement this? Let's have a look at the file system. We have R scripts to load our packages, custom functions, and something called a "drake plan", which I will get to later. We have a _drake.R script to configure the workflow, and some top-level "run" scripts just for convenience. We have an sge.tmpl file to distribute the workload across multiple nodes of a Univa Grid Engine cluster.
+So that's the background. Now how do we implement this? Let's have a look at the file system. We have R scripts to load our packages, custom functions, and something called a "drake plan", which I will get to later. We have a _drake.R script to configure the workflow, and some top-level "run" scripts just for convenience. We also have an sge.tmpl file to help us distribute the workload across multiple nodes of a Univa Grid Engine cluster.
 
 ---
 
@@ -235,6 +235,12 @@ So that's the background. Now how do we implement this? Let's have a look at the
 >    - Everything that happens is a function call.
 >
 > John Chambers
+
+???
+
+Most of the code we write is going to be in the form of custom functions. Now this may be unfamiliar to a lot of folks who are used to writing imperative code: numbered scripts, or everything in a bunch of R Markdown reports, etc. Functions scale much better for big stuff. A function is just a reusable set of instructions with multiple inputs and a single return value. Usually those inputs are explicitly defined and easy to create, and usually the function has an informative name. Functions are a fundamental built-in feature of almost every programming language we have, and they are particularly well suited to R, which was designed with formal functional programming principles in mind.
+
+The most obvious use for functions is as a way to avoid copies of repeated code scattered throughout your project. So instead of copying and pasting the same code block everywhere, you just call the function. But functions are not just for code you want to reuse, they're for code you want to understand. Functions are custom shorthand. They make your work easier to read, understand, break down into manageable pieces, document, test, and validate. And that's why a function-oriented approach is superior to an ad-hoc script-oriented approach for a computationally intense simulation study that influences the conduct of serious clinical research.
 
 ---
 
@@ -258,6 +264,10 @@ simulate_trial <- function(
     )
 }
 ```
+
+???
+
+Most of our functions revolve around 3 kinds of tasks: preparing datasets, analyzing datasets, and summarizing analyses. This one is the top-level function of the data piece. It accepts easy-to-generate design parameters as arguments, and it returns a tidy data frame of simulated patient-level data. Inside the body, it calls another custom function called simulate_arm(), which we define elsewhere in the functions.R file.
 
 ---
 
@@ -285,6 +295,12 @@ summarize_samples <- function(samples, patients) {
 # And a few more...
 ```
 
+???
+
+Another custom function called model_hazard() actually fits the model, and it uses custom functions run_chain() and summarize_samples() to generate a one-row tidy data frame of results for a single simulated trial.
+
+At this point, you already have something you can take away and apply. Even if you decide not to use drake, this function-oriented style still has a lot of value. However, if you're thinking about using drake, then converting to functions is almost all of the work. Once you've done that, you're already almost there. All you need now is to outline the specific steps of the computation in an object called a drake plan.
+
 ---
 
 ## `plan.R`
@@ -305,10 +321,14 @@ plan <- drake_plan(
       censor = 30
     ),
     dynamic = map(sim),
-    transform = map(mean_treatment = c(10, 15, 20)),
+    transform = map(mean_treatment = c(10, 20)),
     format = "fst_tbl"
   ),
 ```
+
+???
+
+And here's how you define it. Inside the drake_plan() function, you list out things called targets. Each target is an individual step in the workflow. It has an informative name like "sim" or "patients", and it has a R command that invokes your custom functions and returns a value. drake has shorthand to define entire groups of targets, so here we generate a patient-level dataset for each treatment effect and each simulation rep.  
 
 ---
 
@@ -337,6 +357,10 @@ plan <- drake_plan(
 )
 ```
 
+???
+
+And we have targets to analyze each dataset, summarize each effect size scenario, and combine the final results into a single data frame.
+
 ---
 
 ## Plan objects are data frames.
@@ -355,7 +379,7 @@ plan <- drake::drake_plan(
       censor = 30
     ),
     dynamic = map(sim),
-    transform = map(mean_treatment = c(10, 15, 20)),
+    transform = map(mean_treatment = c(10, 20)),
     format = "fst_tbl"
   ),
   models = target(
@@ -382,15 +406,25 @@ plan <- drake::drake_plan(
 plan
 ```
 
+???
+
+The drake_plan() function doesn't actually run any of this work just yet. It simply returns a tidy data frame of the work we have planned. We've broken down the workflow into targets. We do this because we want drake to be able to skip some targets when they're already up to date, which is going to save us loads of runtime.
+
 ---
 
-## Pipelines are directed acyclic graphs
+## Pipelines have directed acyclic graph representations
 
 ```{r}
 plot(plan)
 ```
 
 ![](./images/graph1.png)
+
+???
+
+It's always good practice to visualize the dependency graph of the plan. drake has functions to do this for you, and it really demystifies how drake works. So here you see the flow of the project from left to right. We decide how many simulations we're going to run, then we simulate a bunch of patients, analyze them with models, and summarize them.
+
+But how does drake know that the models depend on the patients? The order you write targets in the plan does not matter. drake knows that the patients depend on the models because the symbol "patients" is mentioned in the command for "models" in the plan. And in fact, we get one model for each patient-level dataset because of the "dynamic = map(patients)" call in the target. drake scans your commands and functions without actually running them it in order to look for changes and understand dependency relationships. This is called static code analysis.
 
 ---
 
@@ -411,6 +445,10 @@ drake_config(
 )
 ```
 
+???
+
+To put it all together, we use a script called _drake.R. We load our packages, functions, and plan, we set options to farm out targets to the cluster, and we end with a call to drake_config(). drake_config() explicitly accepts the plan and workflow settings, and it implicitly accepts the environment where the functions are defined.
+
 ---
 
 ## Run the pipeline with `r_make()`
@@ -430,6 +468,12 @@ r_make()
 #> ▶ target results
 ```
 
+???
+
+To actually run the workflow, we use a function called r_make(). r_make() creates a clean new reproducible R process, runs _drake.R to populate the new session, resolves the dependency graph, runs the correct targets in the correct order from the dependency graph, and writes the return values to storage.
+
+Throughout this whole process, drake distributes targets across the Univa Grid Engine cluster we configured it with. drake automatically knows from the graph which targets can run in parallel and which need to wait for dependencies. So you don't need to worry out how to parallelize your code, you can focus more on the content of the methodology.
+
 ---
 
 ## Inspect the results
@@ -442,6 +486,12 @@ r_make()
 #> 1        0.996             10           20              100  2.36      1.03
 #> 2        0.001             20           20              100  0.997     1.02
 ```
+
+???
+
+Afterwards, all the targets are in storage. There's a special key-value store in a hidden .drake/ folder, and drake has functions loadd() and readd() to retrieve data from the store. drake abstracts artifacts as ordinary objects. You don't need to worry about where these files are located, you just need to know the target names.
+
+Here is the first round of operating characteristics. We have a strong scenario that assumes the drug cuts hospitalization time in half, and we have a null scenario that assumes no efficacy at all. We meet the efficacy criterion in the former, but not in the latter. This aligns with prior expectations, so it's a sign the code is working. But it's not useful yet because it only states the obvious. We need to add more scenarios to understand how this trial behaves. In practice, we reach out cross-functionally and comb the literature of the disease state to come up with meaningful scenarios. Maybe we set one effect size scenario right at the effect of interest in the efficacy rule, another effect size scenario right at standard of care (or the most promising therapy currently under development).
 
 ---
 
@@ -464,6 +514,10 @@ plan <- drake_plan(
   # ...
 ```
 
+???
+
+In any case, when we want to add a scenario, we go back to the plan and add new targets. In this plan, we add a new mean response for the treatment arm.
+
 ---
 
 ## The old targets are still up to date.
@@ -473,6 +527,11 @@ r_vis_drake_graph()
 ```
 
 ![](./images/graph2.png)
+
+???
+
+When we visualize the graph this time, we see our new targets. We also see that the targets we previously ran are still up to date because we did not change any of the data, commands, for functions they depend on. Only the new targets are outdated, as well as the final results target which depends on everything.
+
 
 ---
 
@@ -494,6 +553,10 @@ r_make()
 #> ▶ target results
 ```
 
+???
+
+So when we run r_make() again, only the new scenarios actually get computed. drake skips the rest and saves us a whole lot of runtime. That's 2000 Bayesian models we don't need to fit.
+
 ---
 
 ## New combined results
@@ -508,6 +571,12 @@ readd(results)
 #> 3        0.001             20           20              100  0.997     1.02
 ```
 
+???
+
+And our final results automatically updated with the results we have so far. That new scenario is in the middle.
+
+Now I didn't show this, but the dependency graph also takes into account functions mentioned in the commands of the plan, as well as functions nested inside those functions. And if any one of those functions changes, drake automatically reruns the targets they depend on and skips the targets that are still up to date. It also does this with data files. You can tell drake to track input and output files with special language. So drake keeps up with the constant stream of changes you make to code and data during development, and it keeps results up to date without wasting time.
+
 ---
 
 ## Tangible evidence of reproducibility.
@@ -516,6 +585,10 @@ readd(results)
 r_make()
 #> ✓ All targets are already up to date.
 ```
+
+???
+
+At the end of the day, drake can tell you if all your targets are up to date. This is tangible evidence that your output matches the code and data it's supposed to come from. It's evidence that someone else running the same code would get the same results. That's reproducibility. 
 
 ---
 
@@ -527,6 +600,10 @@ r_make()
 - Hands-on workshop: <https://github.com/wlandau/learndrake>
 - Code examples: <https://github.com/wlandau/drake-examples>
 - Discuss at rOpenSci.org: <https://discuss.ropensci.org>
+
+???
+
+You can learn more about drake in the online manual, reference website, public examples, or online workshop.
 
 ---
 
@@ -546,6 +623,10 @@ Dynamic branching | [`5-dynamic/5-dynamic.Rmd`](https://github.com/wlandau/learn
 Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learndrake/blob/master/inst/notebooks/6-files/6-files.Rmd)
 
 * Source materials: <https://github.com/wlandau/learndrake>
+
+???
+
+The workshop is fully online and interactive, and you can take it on your own. Just sign up for a free account at RStudio Cloud, open the workspace in a web browser, and work through the R notebooks and Shiny apps in order. The exercises gradually build up a machine learning project and explore the features and concepts of drake as the project expands.
 
 ---
 
@@ -593,6 +674,10 @@ Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learnd
 </tr>
 </table>
 
+???
+
+I owe many thanks to the R community, especially rOpenSci, for the vibrant discussion and widespread adoption that made drake the package it is today. So many people contributed insightful ideas and informed me about problems I didn't know existed, and this active participation was the real fuel for development over the past four years.
+
 ---
 
 ## rOpenSci use cases
@@ -602,6 +687,10 @@ Files and R Markdown | [`6-files/6-files.Rmd`](https://github.com/wlandau/learnd
 <center>
 <img src = "./images/ropensci.png" style="border: none; box-shadow: none; height: 150px">
 </center>
+
+???
+
+drake is a peer-reviewed rOpenSci package. If you would like to share your use case, please consider reaching out at ropensci.org/usecases. 
 
 ---
 
