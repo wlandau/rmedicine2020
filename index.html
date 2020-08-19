@@ -176,13 +176,27 @@ That's where drake comes in. drake is a Make-like pipeline tool that is fundamen
 
 * Motivation: design a randomized placebo-controlled phase 2 clinical trial of a potential new treatment of COVID-19.
 * Goal: understand the operating characteristics of a 200-patient trial under different effect size scenarios.
-* Patient population: hospitalized patients with moderate symptoms.
+* Enroll newly hospitalized patients (within 3 days of admission) who do not need supplemental oxygen or ventilation.
 * Endpoint: days until the patient is discharged from the hospital.
 * Decision: graduate to phase 3 at the end of the study if Prob(hazard ratio (of hospital discharge) &gt; 1.5) &gt; 0.6.
 * Simulation:
     1. Simulate time to event data from each arm (1 treatment and 1 placebo) from normal distributions (left-truncated right-censored).
     2. Analyze with a Bayesian survival model by [Zhou, Hanson, and Zhang](https://www.jstatsoft.org/article/view/v092i09) (2020; R package [`spBayesSurv`](https://cran.r-project.org/web/packages/spBayesSurv/index.html)).
     3. Aggregate over simulations to calculate operating characteristics.
+
+???
+
+Let's go to an example.
+
+I am part of a capabilities team at Lilly, and much of our work revolves around the design and simulation of clinical trials. In the first several months of 2020, we helped design several trials for potential new treatments of COVID-19. We used simulation to explore the operating characteristics of these trials and determine features like sample size, primary endpoint, and even when the trial should stop.
+
+Now this slide has a mock example clinical trial simulation study. It's not the actual simulation study for any one trial in particular, and it's oversimplified for pedagogical purposes. But it does represent how my team and I set up the computation for this kind of problem. We use drake a lot, and we use drake a lot in this way.
+
+So this is a mock phase 2 trial, and the goal of the simulation is just to understand the trial's operating characteristics. So when is this trial going to claim the therapy works, and when is it going to claim that the therapy doesn't work? We want to design a trial that makes the correct decision without an unnecessarily large sample size. And one of the things we want to find out is whether 200 patients is a good enough.
+
+Suppose we enroll newly hospitalized COVID-19 patients and measure the number of days until they're cleared to leave. We randomize half the patients to the treatment, half to placebo, and measure the drug's ability to shorten the hospital stay. For the end of the trial, there are multiple pre-built criteria to determine whether the therapy moves on to phase 3 studies. Suppose that we meet the efficacy criterion if the probability that the hazard ratio of hospital discharge exceeds one and a half is greater than 60%. 
+
+We assess the design of this trial using simulation. First, we draw time to event data for each study arm from a distribution. Then, we analyze the simulated data and evaluate the efficacy rule using a Bayesian proportional hazards model. We repeat for many simulations, and we aggregate the results to figure out what efficacy decision the trial is likely to make under different scenarios.
 
 ---
 
